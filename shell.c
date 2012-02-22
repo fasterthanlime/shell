@@ -26,6 +26,7 @@ struct builtin {
 int
 builtin_cd(int argc, char **argv)
 {
+        warn("cd builtin");
 	/* body of cd builtin command */
 	/* add your code here */
 	return (0);
@@ -34,6 +35,7 @@ builtin_cd(int argc, char **argv)
 int
 builtin_exit(int argc, char **argv)
 {
+        warn("exit builtin");
 	/* body of exit builtin command */
 	/* add your code here */
 	return (0);
@@ -42,6 +44,7 @@ builtin_exit(int argc, char **argv)
 int
 builtin_status(int argc, char **argv)
 {
+        warn("status builtin");
 	/* body of the status builtin command */
 	/* add your code here */
 	return (0);
@@ -80,7 +83,20 @@ run_builtin(char **args)
 	return (0);
 }
 
-/* add your code here */
+/*
+ * run_command handles 
+ */
+static int
+run_command(char **args)
+{
+        // try built-in first
+        if (run_builtin(args) == 1) {
+            return (1);
+        }
+
+        // execute external command
+        fprintf(stderr, "Should execute command %s\n", args[0]);
+}
 
 /*
  * Takes a pointer to a string pointer and advances this string pointer
@@ -131,9 +147,9 @@ newcmd2:
 		ch = *p;
 		*p = 0;
 
-		/*
+                /*
 		printf("parseword: '%s', '%c', '%s'\n", word, ch, p + 1);
-		*/
+                */
 
 		if (word != NULL) {
 			*narg++ = word;
@@ -141,35 +157,17 @@ newcmd2:
 		}
 
 nextch:
-		/*
-		 * Here you should put your code for processing the commands
-		 * Up to this point, pointer word points to the next word,
-		 * ch points to the first character after the word
-		 * You should process according to what is in the ch.
-		 * For example, use switch(). Next example will skip whitespaces
-		 * and detect the redirection of the standard output.
-		 *
-
 		switch (ch) {
 		case ' ':
-		case '\t': break;
+		case '\t': p++; ch = *p; goto nextch;
 		case '>':
-			warn('Ah, we have redirection!');
+			warn("Ah, we have redirection!");
 			break;
 		case '\n':
-			RUN_COMMAND();
+                        run_command(args);
 			break;
-		default:
+		//default:
 		}
-
-		 *
-		 * The previous example is broken in many ways, though,
-		 * so you should not use it verbatim.
-		 *
-		 */
-
-		/* add your code here */
-		;
 	}
 }
 
