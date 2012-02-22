@@ -1,4 +1,4 @@
-CFLAGS= -g -Wall
+CFLAGS := ${CFLAGS} -g -Wall -Wextra -pedantic -std=gnu99
 
 all: shell
 
