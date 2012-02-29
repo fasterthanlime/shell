@@ -95,7 +95,24 @@ run_command(char **args)
         }
 
         // execute external command
+        pid_t child_pid;
+        int exit_code;
+
         fprintf(stderr, "Should execute command %s\n", args[0]);
+        if ((child_pid = fork()) == 0) {
+            /* Child process code */    
+            fprintf(stderr, "Child!\n");
+            exit(0);
+        } else if(child_pid > 0) {
+            /* Parent process code */
+            waitpid(child_pid, &exit_code, 0);
+            
+            fprintf(stderr, "Process %d returned with status %d\n", child_pid, exit_code);
+        } else {
+            fprintf(stderr, "Failed to fork! Cannot launch command.\n");
+        }
+
+        return (1);
 }
 
 /*
