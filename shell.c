@@ -186,7 +186,9 @@ nextch:
 		case '\n':
                         run_command(args);
 			break;
-		//default:
+		default:
+                        p--; // will be handled by next iteration
+                        break;
 		}
 	}
 }
