@@ -4,6 +4,7 @@
 #include <sys/param.h>
 
 #include <err.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -98,16 +99,18 @@ run_command(char **args)
         pid_t child_pid;
         int exit_code;
 
-        fprintf(stderr, "Should execute command %s\n", args[0]);
         if ((child_pid = fork()) == 0) {
             /* Child process code */    
-            fprintf(stderr, "Child!\n");
-            exit(0);
+            if (execvp(args[0], args) == -1) {
+                fprintf(stderr, "Process %d failed with error: %s", child_pid, strerror(errno));
+            }
         } else if(child_pid > 0) {
             /* Parent process code */
             waitpid(child_pid, &exit_code, 0);
             
-            fprintf(stderr, "Process %d returned with status %d\n", child_pid, exit_code);
+            if (exit_code) {
+                fprintf(stderr, "[%%%d] %s\n", child_pid, strerror(exit_code));
+            }
         } else {
             fprintf(stderr, "Failed to fork! Cannot launch command.\n");
         }
