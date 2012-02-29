@@ -106,11 +106,7 @@ run_command(char **args)
             }
         } else if(child_pid > 0) {
             /* Parent process code */
-            waitpid(child_pid, &exit_code, 0);
-            
-            if (exit_code) {
-                fprintf(stderr, "[%%%d] %s\n", child_pid, strerror(exit_code));
-            }
+            waitpid(child_pid, &error, 0);
         } else {
             fprintf(stderr, "Failed to fork! Cannot launch command.\n");
         }
