@@ -15,6 +15,13 @@
 
 static int error;
 static int inout[2];
+static int flags;
+
+enum PROCESS_FLAGS {
+    P_BG,
+    P_OR,
+    P_AND
+};
 
 typedef int (*builtin_cmd)(int, char **);
 
@@ -91,6 +98,16 @@ run_builtin(char **args)
 static int
 run_command(char **args)
 {
+        // DEBUG start
+        // char **nargs = args;
+        // int argc = 0;
+        // while (*nargs) {
+        //     argc++;
+        //     nargs++;
+        // }
+        // fprintf(stderr, "Launching %s with %d arguments\n", args[0], argc);
+        // DEBUG end
+
         // try built-in first
         if (run_builtin(args) == 1) {
             return (1);
@@ -116,7 +133,7 @@ run_command(char **args)
                 close(inout[1]);
             }
 
-            fprintf(stderr, "Launching '%s'\n", args[0]);
+            // fprintf(stderr, "Launching '%s'\n", args[0]);
             if (execvp(args[0], args) == -1) {
                 fprintf(stderr, "Process %d failed with error: %s", child_pid, strerror(errno));
             }
@@ -166,10 +183,15 @@ process(char *line)
 	int pip[2];
 
 	p = line;
+        if (*p == '#') {
+            // comment line, don't execute
+            return;
+        }
 
 newcmd:
 	inout[0] = STDIN_FILENO;
 	inout[1] = STDOUT_FILENO;
+        flags = 0;
 
 newcmd2:
 	narg = args;
@@ -197,7 +219,6 @@ nextch:
                         char *path = parseword(&p);
                         *p = 0;
 
-                        fprintf(stderr, "stdin = '%s' now.\n", path);
                         inout[0] = open(path, O_RDONLY);
 
                         p++; ch = *p;
@@ -208,12 +229,43 @@ nextch:
                         char* path = parseword(&p);
                         *p = 0;
 
-                        fprintf(stderr, "stdout = '%s' now.\n", path);
                         inout[1] = open(path, O_CREAT | O_WRONLY, 00644);
 
                         p++; ch = *p;
                         goto nextch;
                 }
+                case '|': {
+                        p++; 
+                        ch2 = *p;
+                        if (ch2 == '|') {
+                            p++;
+                            run_command(args);
+                            flags |= P_OR;
+                            goto newcmd2;
+                        } else {
+                            warn("piping!");
+                        }
+                        break;
+                }
+                case '&': {
+                        p++;
+                        ch2 = *p;
+                        if (ch2 == '&') {
+                            p++;
+                            run_command(args);
+                            flags |= P_AND;
+                            goto newcmd2;
+                        } else {
+                            flags |= P_BG;
+                            run_command(args);
+                            goto newcmd2;
+                        }
+                        break;
+                }
+		case ';':
+                        p++;
+                        run_command(args);
+                        goto newcmd;
 		case '\n':
                         run_command(args);
 			break;
