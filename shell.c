@@ -116,7 +116,7 @@ run_command(char **args)
                 close(inout[1]);
             }
 
-            fprintf(stderr, "Launching %s\n", args[0]);
+            fprintf(stderr, "Launching '%s'\n", args[0]);
             if (execvp(args[0], args) == -1) {
                 fprintf(stderr, "Process %d failed with error: %s", child_pid, strerror(errno));
             }
@@ -148,6 +148,7 @@ parseword(char **pp)
 	word = p;
 
         // Japanese schoolgirl is NOT AMUSED.
+	// for (; fprintf(stderr, "Testing char %c aka %d\n", *p, *p), strchr("\t&> <;|\n", *p) == NULL; p++)
 	for (; strchr("\t&> <;|\n", *p) == NULL; p++)
 		/* NOTHING */;
 
@@ -181,12 +182,9 @@ newcmd2:
 		ch = *p;
 		*p = 0;
 
-                /*
 		printf("parseword: '%s', '%c', '%s'\n", word, ch, p + 1);
-                */
 
 		if (word != NULL) {
-                        fprintf(stderr, "Adding '%s' to args\n", word);
 			*narg++ = word;
 			*narg = NULL;
 		}
@@ -202,10 +200,7 @@ nextch:
 
                         fprintf(stderr, "stdin = '%s' now.\n", path);
                         inout[0] = open(path, O_RDONLY);
-
-                        p++; ch = *p;
-                        fprintf(stderr, "p = '%s' now.\n", p);
-                        goto nextch;
+                        break;
                 }
 		case '>': {
                         p++;
@@ -214,10 +209,7 @@ nextch:
 
                         fprintf(stderr, "stdout = '%s' now.\n", path);
                         inout[1] = open(path, O_CREAT | O_WRONLY, 00777);
-
-                        p++; ch = *p; 
-                        fprintf(stderr, "p = '%s' now.\n", p);
-                        goto nextch;
+                        break;
                 }
 		case '\n':
 		case '\0':
