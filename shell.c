@@ -10,6 +10,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <ctype.h>
+#include <signal.h>
 
 
 static int error;
@@ -21,7 +22,7 @@ struct builtin {
 	const char *name;
 	builtin_cmd func;
 };
-#define	BIN(n)	{ #n, builtin_ ## n }
+#define	BIN(n)	{ #n, (int (*)()) builtin_ ## n }
 
 
 int
@@ -39,13 +40,13 @@ builtin_cd(int argc, char **argv)
 }
 
 int
-builtin_exit(int argc, char **argv)
+builtin_exit(void)
 {
         exit(0);
 }
 
 int
-builtin_status(int argc, char **argv)
+builtin_status(void)
 {
         printf("%d\n", error);
 	return (0);
@@ -55,7 +56,7 @@ static struct builtin builtins[] = {
 	BIN(cd),
 	BIN(exit),
 	BIN(status),
-	{ NULL }
+	{ NULL, NULL }
 };
 
 /*
@@ -97,7 +98,6 @@ run_command(char **args)
 
         // execute external command
         pid_t child_pid;
-        int exit_code;
         if ((child_pid = fork()) == 0) {
             /* Child process code */    
             if (inout[0] != STDIN_FILENO) {
@@ -164,7 +164,6 @@ process(char *line)
 	char *p, *word;
 	char *args[100], **narg;
 	int pip[2];
-	int fd, mode;
 
 	p = line;
 
@@ -176,7 +175,7 @@ newcmd2:
 	narg = args;
 	*narg = NULL;
 
-	for (; *p != 0; p != line && p++) {
+	for (; *p != 0; p++) {
 		word = parseword(&p);
 
 		ch = *p;
@@ -228,14 +227,21 @@ nextch:
 	}
 }
 
+static void siginthandler()
+{
+        ;
+}
+
 int
 main(void)
 {
 	char cwd[MAXPATHLEN+1];
 	char line[1000];
 	char *res;
-
-	for (;;) {
+        
+        signal(SIGINT, siginthandler);
+	
+        for (;;) {
 		getcwd(cwd, sizeof(cwd));
 		printf("%s %% ", cwd);
 
