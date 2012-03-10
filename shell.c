@@ -107,6 +107,21 @@ run_command(char **args)
         // }
         // fprintf(stderr, "Launching %s with %d arguments\n", args[0], argc);
         // DEBUG end
+        //
+
+        if (flags & P_AND) {
+            // only execute if previous command was successful
+            if (error != 0) {
+                flags = 0;
+                return (0);
+            }
+        } else if (flags & P_OR) {
+            // only execute if previous command was unsuccessful
+            if (error == 0) {
+                flags = 0;
+                return (0);
+            }
+        }
 
         // try built-in first
         if (run_builtin(args) == 1) {
@@ -139,10 +154,14 @@ run_command(char **args)
             }
         } else if (child_pid > 0) {
             /* Parent process code */
-            waitpid(child_pid, &error, 0);
+            if (!(flags & P_BG)) {
+                waitpid(child_pid, &error, 0);
+            }
         } else {
             fprintf(stderr, "Failed to fork! Cannot launch command.\n");
         }
+
+        flags = 0;
 
         return (1);
 }
