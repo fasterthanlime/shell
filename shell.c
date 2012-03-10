@@ -182,7 +182,7 @@ newcmd2:
 		ch = *p;
 		*p = 0;
 
-		printf("parseword: '%s', '%c', '%s'\n", word, ch, p + 1);
+		// printf("parseword: '%s', '%c', '%s'\n", word, ch, p + 1);
 
 		if (word != NULL) {
 			*narg++ = word;
@@ -200,7 +200,9 @@ nextch:
 
                         fprintf(stderr, "stdin = '%s' now.\n", path);
                         inout[0] = open(path, O_RDONLY);
-                        break;
+
+                        p++; ch = *p;
+                        goto nextch;
                 }
 		case '>': {
                         p++;
@@ -208,13 +210,17 @@ nextch:
                         *p = 0;
 
                         fprintf(stderr, "stdout = '%s' now.\n", path);
-                        inout[1] = open(path, O_CREAT | O_WRONLY, 00777);
-                        break;
+                        inout[1] = open(path, O_CREAT | O_WRONLY, 00644);
+
+                        p++; ch = *p;
+                        goto nextch;
                 }
 		case '\n':
-		case '\0':
                         run_command(args);
 			break;
+		case '\0':
+                        run_command(args);
+                        goto newcmd;
 		default:
                         p--; // will be handled by next iteration
                         break;
