@@ -27,27 +27,27 @@ struct builtin {
 int
 builtin_cd(int argc, char **argv)
 {
-        warn("cd builtin");
-	/* body of cd builtin command */
-	/* add your code here */
-	return (0);
+        if (argc < 2) {
+            warn("Usage: cd <directory>");
+            return (1);
+        }
+        int code = chdir(argv[1]);
+        if (code != 0) {
+            fprintf(stderr, "cd: %s\n", strerror(errno));
+        }
+	return code;
 }
 
 int
 builtin_exit(int argc, char **argv)
 {
-        warn("exit builtin");
-	/* body of exit builtin command */
-	/* add your code here */
-	return (0);
+        exit(0);
 }
 
 int
 builtin_status(int argc, char **argv)
 {
-        warn("status builtin");
-	/* body of the status builtin command */
-	/* add your code here */
+        printf("%d\n", error);
 	return (0);
 }
 
@@ -104,7 +104,7 @@ run_command(char **args)
             if (execvp(args[0], args) == -1) {
                 fprintf(stderr, "Process %d failed with error: %s", child_pid, strerror(errno));
             }
-        } else if(child_pid > 0) {
+        } else if (child_pid > 0) {
             /* Parent process code */
             waitpid(child_pid, &error, 0);
         } else {
