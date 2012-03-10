@@ -18,9 +18,9 @@ static int inout[2];
 static int flags;
 
 enum PROCESS_FLAGS {
-    P_BG,
-    P_OR,
-    P_AND
+    P_BG =  (1 << 0),
+    P_OR =  (1 << 1),
+    P_AND = (1 << 2),
 };
 
 typedef int (*builtin_cmd)(int, char **);
@@ -155,6 +155,7 @@ run_command(char **args)
         } else if (child_pid > 0) {
             /* Parent process code */
             if (!(flags & P_BG)) {
+                fprintf(stderr, "flags = %d, waiting.\n", flags);
                 waitpid(child_pid, &error, 0);
             }
         } else {
@@ -260,7 +261,7 @@ nextch:
                             p++;
                             run_command(args);
                             flags |= P_OR;
-                            goto newcmd2;
+                            goto newcmd;
                         } else {
                             warn("piping!");
                         }
@@ -273,11 +274,11 @@ nextch:
                             p++;
                             run_command(args);
                             flags |= P_AND;
-                            goto newcmd2;
+                            goto newcmd;
                         } else {
                             flags |= P_BG;
                             run_command(args);
-                            goto newcmd2;
+                            goto newcmd;
                         }
                         break;
                 }
