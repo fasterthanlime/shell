@@ -98,9 +98,25 @@ run_command(char **args)
         // execute external command
         pid_t child_pid;
         int exit_code;
-
         if ((child_pid = fork()) == 0) {
             /* Child process code */    
+            if (inout[0] != STDIN_FILENO) {
+                dup2(inout[0], 0); 
+                if (errno) {
+                    fprintf(stderr, "error while dup2-ing: %s\n", strerror(errno));
+                }
+                close(inout[0]);
+            }
+
+            if (inout[1] != STDOUT_FILENO) {
+                dup2(inout[1], 1); 
+                if (errno) {
+                    fprintf(stderr, "error while dup2-ing: %s\n", strerror(errno));
+                }
+                close(inout[1]);
+            }
+
+            fprintf(stderr, "Launching %s\n", args[0]);
             if (execvp(args[0], args) == -1) {
                 fprintf(stderr, "Process %d failed with error: %s", child_pid, strerror(errno));
             }
@@ -131,10 +147,12 @@ parseword(char **pp)
 
 	word = p;
 
-	for (; strchr(" \t;&|><\n", *p) == NULL; p++)
+        // Japanese schoolgirl is NOT AMUSED.
+	for (; strchr("\t&> <;|\n", *p) == NULL; p++)
 		/* NOTHING */;
 
 	*pp = p;
+
 	return (p != word ? word : NULL);
 }
 
@@ -168,6 +186,7 @@ newcmd2:
                 */
 
 		if (word != NULL) {
+                        fprintf(stderr, "Adding '%s' to args\n", word);
 			*narg++ = word;
 			*narg = NULL;
 		}
@@ -176,10 +195,32 @@ nextch:
 		switch (ch) {
 		case ' ':
 		case '\t': p++; ch = *p; goto nextch;
-		case '>':
-			warn("Ah, we have redirection!");
-			break;
+		case '<': {
+                        p++;
+                        char *path = parseword(&p);
+                        *p = 0;
+
+                        fprintf(stderr, "stdin = '%s' now.\n", path);
+                        inout[0] = open(path, O_RDONLY);
+
+                        p++; ch = *p;
+                        fprintf(stderr, "p = '%s' now.\n", p);
+                        goto nextch;
+                }
+		case '>': {
+                        p++;
+                        char* path = parseword(&p);
+                        *p = 0;
+
+                        fprintf(stderr, "stdout = '%s' now.\n", path);
+                        inout[1] = open(path, O_CREAT | O_WRONLY, 00777);
+
+                        p++; ch = *p; 
+                        fprintf(stderr, "p = '%s' now.\n", p);
+                        goto nextch;
+                }
 		case '\n':
+		case '\0':
                         run_command(args);
 			break;
 		default:
