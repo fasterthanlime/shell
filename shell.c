@@ -20,6 +20,7 @@
 static int error;
 static int inout[2];
 static int toclose[2];
+pipe_stack *toclose_shell;
 static int flags;
 
 enum PROCESS_FLAGS {
@@ -164,19 +165,18 @@ run_command(char **args)
             }
         } else if (child_pid > 0) {
             /* Parent process code */
+            if (flags & P_BG) {
+                // queue fds to close later
+                if (inout[0] != STDIN_FILENO) {
+                    pip_push(toclose_shell, inout[0]);
+                }
 
-            // close the child's input and output
-            if (inout[0] != STDIN_FILENO) {
-                dbg("closing r%d\n", inout[0]);
-                close(inout[0]);
-            }
+                if (inout[1] != STDOUT_FILENO) {
+                    pip_push(toclose_shell, inout[1]);
+                }
+            } else {
+                pip_close_all(toclose_shell);
 
-            if (inout[1] != STDOUT_FILENO) {
-                dbg("closing w%d\n", inout[1]);
-                close(inout[1]);
-            }
-
-            if (!(flags & P_BG)) {
                 dbg("waiting for [%d]\n", child_pid);
                
                 if(waitpid(child_pid, &error, 0) == -1) {
@@ -388,6 +388,8 @@ main(void)
 	char cwd[MAXPATHLEN+1];
 	char line[1000];
 	char *res;
+        
+        toclose_shell = pip_new();
        
         // ignore interruptions: the shell shall survive!
         signal(SIGINT, do_nothing);

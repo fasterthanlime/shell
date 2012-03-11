@@ -1,6 +1,10 @@
 #ifndef __DEBUG_H__
 #define __DEBUG_H__
 
+#include <unistd.h>
+#include <stdio.h>
+#include <string.h>
+
 #define DEBUG 1
 
 // string handling in C suxxorz

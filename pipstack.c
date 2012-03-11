@@ -2,14 +2,15 @@
 #include <stdlib.h>
 #include "pipstack.h"
 #include "debug.h"
+#include <err.h>
 
-typedef struct {
+struct pipe_stack {
     int count;
     int size;
     int* list;
-} pipe_stack;
+};
 
-void pip_is_empty(pipe_stack* pipes) {
+int pip_is_empty(pipe_stack* pipes) {
     return pip_get_size(pipes) == 0;
 }
 
@@ -31,7 +32,7 @@ void pip_push(pipe_stack* pipes, int fd) {
         warn("overflow: trying to push pipes on a full stack");
         exit(1);
     }
-    pipes->list[pipes->count++];
+    pipes->list[pipes->count++] = fd;
 }
 
 int pip_get_size(pipe_stack* pipes) {

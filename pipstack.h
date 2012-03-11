@@ -1,6 +1,7 @@
 #ifndef __PIP_STACK__
 #define __PIP_STACK__
 
+struct pipe_stack;
 typedef struct pipe_stack pipe_stack;
 
 int pip_get_size(pipe_stack* pipes);
