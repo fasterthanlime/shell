@@ -135,16 +135,14 @@ run_command(char **args)
         if ((child_pid = fork()) == 0) {
             /* Child process code */    
             if (inout[0] != STDIN_FILENO) {
-                dup2(inout[0], 0); 
-                if (errno) {
+                if (dup2(inout[0], 0) == -1) {
                     fprintf(stderr, "error while dup2-ing: %s\n", strerror(errno));
                 }
                 close(inout[0]);
             }
 
             if (inout[1] != STDOUT_FILENO) {
-                dup2(inout[1], 1); 
-                if (errno) {
+                if (dup2(inout[1], 1) == -1) {
                     fprintf(stderr, "error while dup2-ing: %s\n", strerror(errno));
                 }
                 close(inout[1]);
@@ -162,17 +160,22 @@ run_command(char **args)
                 fprintf(stderr, "Process %d failed with error: %s", child_pid, strerror(errno));
             }
         } else if (child_pid > 0) {
+            fprintf(stderr, "%s has pid %d\n", args[0], child_pid);
+
             /* Parent process code */
             if (!(flags & P_BG)) {
-                fprintf(stderr, "flags = %d, waiting.\n", flags);
-               
                 // close ends of the pipe we don't use
                 for (int i = 0; i < 2; i++) if (toclose[i] != -1) {
                     fprintf(stderr, "From child, closing %d\n", toclose[i]);
                     close(toclose[i]);
                     toclose[i] = -1;
                 }
-                waitpid(child_pid, &error, 0);
+
+                fprintf(stderr, "flags = %d, waiting for %d\n", flags, child_pid);
+               
+                if(waitpid(child_pid, &error, 0) == -1) {
+                    fprintf(stderr, "Error while waiting for %d: %s\n", child_pid, strerror(errno));
+                }
             }
         } else {
             fprintf(stderr, "Failed to fork! Cannot launch command.\n");
@@ -350,7 +353,9 @@ nextch:
                             inout[FD_READ] = pip[FD_READ];
                             toclose[FD_WRITE] = pip[FD_WRITE];
                         }
-                        run_command(args);
+                        if (args[0]) {
+                            run_command(args);
+                        }
                         return;
 		default:
                         p--; // will be handled by next iteration
@@ -359,9 +364,19 @@ nextch:
 	}
 }
 
-static void siginthandler()
+int
+reap_zombie_jesus(void)
 {
-        ;
+        int cadaver;
+
+        fprintf(stderr, "Reaping zombie children!\n");
+        // reap all zombie children
+        while((cadaver = waitpid(-1, NULL, WNOHANG)) > 0) {
+            /* magic! */
+            fprintf(stderr, "Killed %d!\n", cadaver);
+        }
+        fprintf(stderr, "Done!\n");
+        return 0;
 }
 
 int
@@ -370,8 +385,12 @@ main(void)
 	char cwd[MAXPATHLEN+1];
 	char line[1000];
 	char *res;
-        
-        signal(SIGINT, siginthandler);
+       
+        // ignore interruptions: the shell shall survive!
+        signal(SIGINT, SIG_IGN);
+
+        // elect the kernel to automatically reap zombie children
+        signal(SIGCHLD, (__sighandler_t) reap_zombie_jesus);
 	
         for (;;) {
 		getcwd(cwd, sizeof(cwd));
