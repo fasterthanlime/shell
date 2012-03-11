@@ -374,8 +374,14 @@ nextch:
 	}
 }
 
-int
-reap_zombie_jesus(void)
+static void
+do_nothing()
+{
+        ; 
+}
+
+static void
+reap_zombie_jesus()
 {
         int cadaver;
 
@@ -386,7 +392,6 @@ reap_zombie_jesus(void)
             dbg("%d has terminated\n", cadaver);
         }
         // dbg("%s", "Done!\n");
-        return 0;
 }
 
 int
@@ -397,7 +402,7 @@ main(void)
 	char *res;
        
         // ignore interruptions: the shell shall survive!
-        signal(SIGINT, SIG_IGN);
+        signal(SIGINT, do_nothing);
 
         // elect the kernel to automatically reap zombie children
         signal(SIGCHLD, (__sighandler_t) reap_zombie_jesus);
