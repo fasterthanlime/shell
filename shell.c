@@ -11,6 +11,7 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <signal.h>
+#include "pipstack.h"
 
 #define FD_READ 0
 #define FD_WRITE 1
