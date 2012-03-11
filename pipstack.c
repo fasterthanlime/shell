@@ -17,7 +17,7 @@ int pip_is_empty(pipe_stack* pipes) {
 void pip_close_all(pipe_stack* pipes) {
     while (!pip_is_empty(pipes)) {
         int fd = pip_pop(pipes);
-        dbg("closing %d\n", fd);
+        // dbg("closing %d\n", fd);
         close(fd);
     }
 }

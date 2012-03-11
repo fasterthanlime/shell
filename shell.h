@@ -21,8 +21,8 @@ typedef struct {
 } endpoint_t;
 
 enum ENDPOINT_DIRECTIONS {
-    EP_READ = 0,
-    EP_WRITE = 1,
+    EP_INPUT = 0,
+    EP_OUTPUT = 1,
 };
 
 enum ENDPOINT_TYPES {
@@ -52,7 +52,7 @@ void endpoint_sanity_check(endpoint_t* ep) {
         exit(1);
     }
 
-    if (ep->direction != EP_READ && ep->direction != EP_WRITE) {
+    if (ep->direction != EP_INPUT && ep->direction != EP_OUTPUT) {
         dbg("invalid value for ep->direction: %d\n", ep->direction);
         exit(1);
     }
@@ -61,6 +61,35 @@ void endpoint_sanity_check(endpoint_t* ep) {
         dbg("%s", "null path for ep of type EP_FILE\n");
         exit(1);
     }
+}
+
+char *endpoint_repr(endpoint_t *ep) {
+    int size = 1024;
+    char *repr = malloc(size);
+    char *dir = ep->direction ? "=>" : "<=";
+
+    switch (ep->type) {
+        case EP_TTY:
+            snprintf(repr, size, "%s %s", dir, "TTY");
+            break;
+        case EP_FILE:
+            snprintf(repr, size, "%s file(%s)", dir, ep->path);
+            break;
+        case EP_PIPE:
+            snprintf(repr, size, "%s pipe(%d, %d)", dir, ep->pipe.fd_read, ep->pipe.fd_write);
+            break;
+        default:
+            snprintf(repr, size, "%s ???", dir);
+    }
+    return repr;
+}
+
+void command_debug(command_t *cm) {
+    char *in  = endpoint_repr(cm->input);
+    char *out = endpoint_repr(cm->output);
+    dbg("%s | %s | %s\n", in, cm->argv[0], out);
+    free(in);
+    free(out);
 }
 
 endpoint_t *endpoint_new(int direction) {
@@ -91,7 +120,7 @@ void endpoint_setup(endpoint_t* ep) {
             // nothing to do
             break;
         case EP_FILE: {
-            if (ep->direction == EP_READ) {
+            if (ep->direction == EP_INPUT) {
                 ep->fd = open(ep->path, O_RDONLY);
             } else {
                 ep->fd = open(ep->path, O_CREAT | O_WRONLY, 0644);
@@ -104,13 +133,19 @@ void endpoint_setup(endpoint_t* ep) {
             break;
         }
         case EP_PIPE: {
-            if (ep->direction == EP_READ) {
+            if (ep->direction == EP_INPUT) {
                 ep->fd = ep->pipe.fd_read;
                 close(ep->pipe.fd_write);
             } else {
                 ep->fd = ep->pipe.fd_write;
                 close(ep->pipe.fd_read);
             }
+            if(dup2(ep->fd, ep->direction) == -1) {
+                dbg("error while setting endpoint %d to fd %d\n", ep->direction, ep->fd);
+                exit(1);
+            }
+            close(ep->fd);
+            break;
         }
     }
 }
@@ -135,8 +170,8 @@ void command_sanity_check(command_t* cm) {
 command_t* command_new(void) {
     command_t *cm = calloc(1, sizeof(command_t));
     // TTY by default
-    cm->input  = endpoint_new(EP_READ);
-    cm->output = endpoint_new(EP_WRITE);
+    cm->input  = endpoint_new(EP_INPUT);
+    cm->output = endpoint_new(EP_OUTPUT);
     return cm;
 }
 
@@ -178,7 +213,7 @@ void command_setup_endpoints(command_t* cm) {
 pipe_t pipe_new() {
     int pip[2];
     if(pipe(pip) == -1) {
-        dbg("%s", "could not create pipe!");
+        dbg("%s", "could not create pipe!\n");
     }
     return (pipe_t) { pip[0], pip[1] };
 }

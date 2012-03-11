@@ -16,6 +16,7 @@
 #include "debug.h"
 
 static int error;
+static pipe_stack *shell_stack;
 
 // -----------------------
 // Built-ins
@@ -109,18 +110,22 @@ run_command(command_t *cm, char **args)
         // execute external command
         pid_t child_pid;
         if ((child_pid = fork()) == 0) {
+            command_debug(cm);
+
             /* Child process code */    
             command_setup_endpoints(cm);
+
+            pip_close_all(shell_stack);
+
+            //printf("This is standard output of [%d] aka %s\n", getpid(), args[0]);
 
             if (execvp(args[0], args) == -1) {
                 dbg("Launching %s failed with error: %s\n", args[0], strerror(errno));
             }
         } else if (child_pid > 0) {
-            // queue fds to close later
-            command_close_endpoints(cm);
-
             /* Parent process code */
             if (!(cm->flags & P_BG)) {
+                pip_close_all(shell_stack);
                 dbg("waiting for [%d]\n", child_pid);
                
                 if(waitpid(child_pid, &error, 0) == -1) {
@@ -190,7 +195,6 @@ newcmd:
         cm->flags = next_cm_flags;
         next_cm_flags = 0;
 
-newcmd2:
 	narg = args;
 	*narg = NULL;
 
@@ -200,12 +204,11 @@ newcmd2:
 		ch = *p;
 		*p = 0;
 
-		// printf("parseword: '%s', '%c', '%s'\n", word, ch, p + 1);
+		// printf("parseword: '%s', '%c', '%s'\n", word, ch, p + 1); 
 
-		if (word != NULL) {
-			*narg++ = word;
-			*narg = NULL;
-		}
+                if (word != NULL) { 
+                    *narg++ = word; *narg = NULL; 
+                } 
 
 nextch:
 		switch (ch) {
@@ -250,6 +253,8 @@ nextch:
                             // |
                             cm->output->type = EP_PIPE;
                             cm->output->pipe = pipe_new();
+                            pip_push(shell_stack, cm->output->pipe.fd_read);
+                            pip_push(shell_stack, cm->output->pipe.fd_write);
                             cm->flags |= P_BG;
 
                             run_command(cm, args);
@@ -319,6 +324,7 @@ main(void)
 	char cwd[MAXPATHLEN+1];
 	char line[1000];
 	char *res;
+        shell_stack = pip_new();
        
         // ignore interruptions: the shell shall survive!
         signal(SIGINT, do_nothing);
