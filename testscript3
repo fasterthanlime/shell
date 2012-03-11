@@ -1,0 +1,1 @@
+cat testinput | md5sum | md5sum | md5sum

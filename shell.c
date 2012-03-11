@@ -12,6 +12,7 @@
 #include <ctype.h>
 #include <signal.h>
 #include "pipstack.h"
+#include "shell.h"
 #include "debug.h"
 
 #define FD_READ 0
@@ -23,19 +24,9 @@ static int toclose[2];
 pipe_stack *toclose_shell;
 static int flags;
 
-enum PROCESS_FLAGS {
-    P_BG =  (1 << 0),
-    P_OR =  (1 << 1),
-    P_AND = (1 << 2),
-};
-
-typedef int (*builtin_cmd)(int, char **);
-
-struct builtin {
-	const char *name;
-	builtin_cmd func;
-};
-#define	BIN(n)	{ #n, (int (*)()) builtin_ ## n }
+// -----------------------
+// Built-ins
+// -----------------------
 
 int
 builtin_cd(int argc, char **argv)
@@ -164,18 +155,18 @@ run_command(char **args)
                 dbg("Launching %s failed with error: %s\n", args[0], strerror(errno));
             }
         } else if (child_pid > 0) {
-            /* Parent process code */
-            if (flags & P_BG) {
-                // queue fds to close later
-                if (inout[0] != STDIN_FILENO) {
-                    pip_push(toclose_shell, inout[0]);
-                }
+            // queue fds to close later
+            if (inout[0] != STDIN_FILENO) {
+                pip_push(toclose_shell, inout[0]);
+            }
 
-                if (inout[1] != STDOUT_FILENO) {
-                    pip_push(toclose_shell, inout[1]);
-                }
-            } else {
-                pip_close_all(toclose_shell);
+            if (inout[1] != STDOUT_FILENO) {
+                pip_push(toclose_shell, inout[1]);
+            }
+            pip_close_all(toclose_shell);
+
+            /* Parent process code */
+            if (!(flags & P_BG)) {
 
                 dbg("waiting for [%d]\n", child_pid);
                

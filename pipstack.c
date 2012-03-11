@@ -11,13 +11,13 @@ struct pipe_stack {
 };
 
 int pip_is_empty(pipe_stack* pipes) {
-    return pip_get_size(pipes) == 0;
+    return pip_get_size(pipes) <= 0;
 }
 
 void pip_close_all(pipe_stack* pipes) {
     while (!pip_is_empty(pipes)) {
         int fd = pip_pop(pipes);
-        dbg("closing %d", fd);
+        dbg("closing %d\n", fd);
         close(fd);
     }
 }
