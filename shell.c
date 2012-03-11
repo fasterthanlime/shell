@@ -34,6 +34,19 @@ struct builtin {
 };
 #define	BIN(n)	{ #n, (int (*)()) builtin_ ## n }
 
+#define DEBUG 1
+
+// string handling in C suxxorz
+
+#define dbg(fmt, ...) \
+    do { if(DEBUG) { \
+        char __s1[2059]; \
+        char __s2[2049]; \
+        snprintf(__s1, 10, "[%d] ", getpid()); \
+        snprintf(__s2, 2048, fmt, __VA_ARGS__); \
+        strncat(__s1, __s2, 2048); \
+        fprintf(stderr, "%s", __s1); \
+    }} while(0)
 
 int
 builtin_cd(int argc, char **argv)
@@ -108,7 +121,6 @@ run_command(char **args)
             argc++;
             nargs++;
         }
-        fprintf(stderr, " > %s with %d arguments, fds (%d, %d), toclose (%d, %d)\n", args[0], argc, inout[0], inout[1], toclose[0], toclose[1]);
         // DEBUG end
 
         if (flags & P_AND) {
@@ -136,49 +148,49 @@ run_command(char **args)
             /* Child process code */    
             if (inout[0] != STDIN_FILENO) {
                 if (dup2(inout[0], 0) == -1) {
-                    fprintf(stderr, "error while dup2-ing: %s\n", strerror(errno));
+                    dbg("error while dup2-ing: %s\n", strerror(errno));
                 }
                 close(inout[0]);
             }
 
             if (inout[1] != STDOUT_FILENO) {
                 if (dup2(inout[1], 1) == -1) {
-                    fprintf(stderr, "error while dup2-ing: %s\n", strerror(errno));
+                    dbg("error while dup2-ing: %s\n", strerror(errno));
                 }
                 close(inout[1]);
             }
 
             // close ends of the pipe we don't use
             for (int i = 0; i < 2; i++) if (toclose[i] != -1) {
-                fprintf(stderr, "From child, closing %d\n", toclose[i]);
+                dbg("closing %d\n", toclose[i]);
                 close(toclose[i]);
                 toclose[i] = -1;
             }
 
             // fprintf(stderr, "Launching '%s'\n", args[0]);
             if (execvp(args[0], args) == -1) {
-                fprintf(stderr, "Process %d failed with error: %s", child_pid, strerror(errno));
+                dbg("Launching %s failed with error: %s", args[0], strerror(errno));
             }
         } else if (child_pid > 0) {
-            fprintf(stderr, "%s has pid %d\n", args[0], child_pid);
+            fprintf(stderr, "[%d] = %s, fds (%d, %d), toclose (%d, %d)\n", child_pid, args[0], inout[0], inout[1], toclose[0], toclose[1]);
 
             /* Parent process code */
             if (!(flags & P_BG)) {
                 // close ends of the pipe we don't use
                 for (int i = 0; i < 2; i++) if (toclose[i] != -1) {
-                    fprintf(stderr, "From child, closing %d\n", toclose[i]);
+                    dbg("closing %d\n", toclose[i]);
                     close(toclose[i]);
                     toclose[i] = -1;
                 }
 
-                fprintf(stderr, "flags = %d, waiting for %d\n", flags, child_pid);
+                dbg("waiting for [%d]\n", child_pid);
                
                 if(waitpid(child_pid, &error, 0) == -1) {
-                    fprintf(stderr, "Error while waiting for %d: %s\n", child_pid, strerror(errno));
+                    dbg("Error while waiting for [%d]: %s\n", child_pid, strerror(errno));
                 }
             }
         } else {
-            fprintf(stderr, "Failed to fork! Cannot launch command.\n");
+            dbg("%s", "Failed to fork! Cannot launch command.\n");
         }
 
         flags = 0;
@@ -287,22 +299,18 @@ nextch:
                             flags |= P_OR;
                             goto newcmd;
                         } else {
-                            fprintf(stderr, "piping!\n");
-
                             if (pip[FD_READ]) {
-                                fprintf(stderr, "(pipe n-1) -> (process)\n");
                                 // (pipe n-1) -> (process)
                                 inout[FD_READ] = pip[FD_READ];
                                 toclose[FD_WRITE] = pip[FD_WRITE];
                             }
 
                             if(pipe(pip) == -1) {
-                                fprintf(stderr, "Couldn't create a pipe");
+                                dbg("%s", "Couldn't create a pipe");
                                 exit(1);
                             }
-                            fprintf(stderr, "Just created pipe (%d, %d)\n", pip[0], pip[1]);
+                            dbg("created pipe (%d, %d)\n", pip[0], pip[1]);
 
-                            fprintf(stderr, "(process) -> (pipe n)\n");
                             // (process) -> (pipe n)
                             inout[FD_WRITE] = pip[FD_WRITE];
                             toclose[FD_READ] = pip[FD_READ];
@@ -338,8 +346,6 @@ nextch:
 		case ';':
                         p++;
                         if (pip[1]) {
-                            fprintf(stderr, "(pipe n-1) -> (process)\n");
-                            // (pipe n - 1) -> (process)
                             inout[FD_READ] = pip[FD_READ];
                             toclose[FD_WRITE] = pip[FD_WRITE];
                         }
@@ -348,8 +354,6 @@ nextch:
 		case '\n':
 		case '\0':
                         if (pip[1]) {
-                            fprintf(stderr, "(pipe n-1) -> (process)\n");
-                            // (pipe n - 1) -> (process)
                             inout[FD_READ] = pip[FD_READ];
                             toclose[FD_WRITE] = pip[FD_WRITE];
                         }
@@ -369,13 +373,13 @@ reap_zombie_jesus(void)
 {
         int cadaver;
 
-        fprintf(stderr, "Reaping zombie children!\n");
+        dbg("%s", "Reaping zombie children!\n");
         // reap all zombie children
         while((cadaver = waitpid(-1, NULL, WNOHANG)) > 0) {
             /* magic! */
-            fprintf(stderr, "Killed %d!\n", cadaver);
+            dbg("Killed %d!\n", cadaver);
         }
-        fprintf(stderr, "Done!\n");
+        dbg("%s", "Done!\n");
         return 0;
 }
 
