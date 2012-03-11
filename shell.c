@@ -12,9 +12,12 @@
 #include <ctype.h>
 #include <signal.h>
 
+#define FD_READ 0
+#define FD_WRITE 1
 
 static int error;
 static int inout[2];
+static int toclose[2];
 static int flags;
 
 enum PROCESS_FLAGS {
@@ -99,15 +102,14 @@ static int
 run_command(char **args)
 {
         // DEBUG start
-        // char **nargs = args;
-        // int argc = 0;
-        // while (*nargs) {
-        //     argc++;
-        //     nargs++;
-        // }
-        // fprintf(stderr, "Launching %s with %d arguments\n", args[0], argc);
+        char **nargs = args;
+        int argc = 0;
+        while (*nargs) {
+            argc++;
+            nargs++;
+        }
+        fprintf(stderr, " > %s with %d arguments, fds (%d, %d), toclose (%d, %d)\n", args[0], argc, inout[0], inout[1], toclose[0], toclose[1]);
         // DEBUG end
-        //
 
         if (flags & P_AND) {
             // only execute if previous command was successful
@@ -148,6 +150,13 @@ run_command(char **args)
                 close(inout[1]);
             }
 
+            // close ends of the pipe we don't use
+            for (int i = 0; i < 2; i++) if (toclose[i] != -1) {
+                fprintf(stderr, "From child, closing %d\n", toclose[i]);
+                close(toclose[i]);
+                toclose[i] = -1;
+            }
+
             // fprintf(stderr, "Launching '%s'\n", args[0]);
             if (execvp(args[0], args) == -1) {
                 fprintf(stderr, "Process %d failed with error: %s", child_pid, strerror(errno));
@@ -156,6 +165,13 @@ run_command(char **args)
             /* Parent process code */
             if (!(flags & P_BG)) {
                 fprintf(stderr, "flags = %d, waiting.\n", flags);
+               
+                // close ends of the pipe we don't use
+                for (int i = 0; i < 2; i++) if (toclose[i] != -1) {
+                    fprintf(stderr, "From child, closing %d\n", toclose[i]);
+                    close(toclose[i]);
+                    toclose[i] = -1;
+                }
                 waitpid(child_pid, &error, 0);
             }
         } else {
@@ -208,9 +224,14 @@ process(char *line)
             return;
         }
 
+        pip[0] = 0;
+        pip[1] = 0;
+
 newcmd:
 	inout[0] = STDIN_FILENO;
 	inout[1] = STDOUT_FILENO;
+        toclose[0] = -1;
+        toclose[1] = -1;
         flags = 0;
 
 newcmd2:
@@ -249,7 +270,7 @@ nextch:
                         char* path = parseword(&p);
                         *p = 0;
 
-                        inout[1] = open(path, O_CREAT | O_WRONLY, 00644);
+                        inout[1] = open(path, O_CREAT | O_WRONLY, 0644);
 
                         p++; ch = *p;
                         goto nextch;
@@ -263,7 +284,36 @@ nextch:
                             flags |= P_OR;
                             goto newcmd;
                         } else {
-                            warn("piping!");
+                            fprintf(stderr, "piping!\n");
+
+                            if (pip[FD_READ]) {
+                                fprintf(stderr, "(pipe n-1) -> (process)\n");
+                                // (pipe n-1) -> (process)
+                                inout[FD_READ] = pip[FD_READ];
+                                toclose[FD_WRITE] = pip[FD_WRITE];
+                            }
+
+                            if(pipe(pip) == -1) {
+                                fprintf(stderr, "Couldn't create a pipe");
+                                exit(1);
+                            }
+                            fprintf(stderr, "Just created pipe (%d, %d)\n", pip[0], pip[1]);
+
+                            fprintf(stderr, "(process) -> (pipe n)\n");
+                            // (process) -> (pipe n)
+                            inout[FD_WRITE] = pip[FD_WRITE];
+                            toclose[FD_READ] = pip[FD_READ];
+                            flags |= P_BG;
+
+                            run_command(args);
+                            
+                            // reset fds, they'll be set accordingly
+                            toclose[FD_READ] = -1;
+                            toclose[FD_WRITE] = -1;
+                            inout[FD_READ] = STDIN_FILENO;
+                            inout[FD_WRITE] = STDOUT_FILENO;
+
+                            goto newcmd2;
                         }
                         break;
                 }
@@ -284,14 +334,24 @@ nextch:
                 }
 		case ';':
                         p++;
+                        if (pip[1]) {
+                            fprintf(stderr, "(pipe n-1) -> (process)\n");
+                            // (pipe n - 1) -> (process)
+                            inout[FD_READ] = pip[FD_READ];
+                            toclose[FD_WRITE] = pip[FD_WRITE];
+                        }
                         run_command(args);
                         goto newcmd;
 		case '\n':
-                        run_command(args);
-			break;
 		case '\0':
+                        if (pip[1]) {
+                            fprintf(stderr, "(pipe n-1) -> (process)\n");
+                            // (pipe n - 1) -> (process)
+                            inout[FD_READ] = pip[FD_READ];
+                            toclose[FD_WRITE] = pip[FD_WRITE];
+                        }
                         run_command(args);
-                        goto newcmd;
+                        return;
 		default:
                         p--; // will be handled by next iteration
                         break;
