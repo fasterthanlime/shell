@@ -15,14 +15,7 @@
 #include "shell.h"
 #include "debug.h"
 
-#define FD_READ 0
-#define FD_WRITE 1
-
 static int error;
-static int inout[2];
-static int toclose[2];
-pipe_stack *toclose_shell;
-static int flags;
 
 // -----------------------
 // Built-ins
@@ -92,82 +85,42 @@ run_builtin(char **args)
  * run_command handles 
  */
 static int
-run_command(char **args)
+run_command(command_t *cm, char **args)
 {
-        // DEBUG start
-        char **nargs = args;
-        int argc = 0;
-        while (*nargs) {
-            argc++;
-            nargs++;
-        }
-        // DEBUG end
-
-        if (flags & P_AND) {
-            // only execute if previous command was successful
-            if (error != 0) {
-                flags = 0;
-                return (0);
-            }
-        } else if (flags & P_OR) {
-            // only execute if previous command was unsuccessful
-            if (error == 0) {
-                flags = 0;
-                return (0);
-            }
-        }
-
         // try built-in first
         if (run_builtin(args) == 1) {
             return (1);
+        }
+
+        command_copy_args(cm, args);
+
+        if (cm->flags & P_AND) {
+            // only execute if previous command was successful
+            if (error != 0) {
+                return (0);
+            }
+        } else if (cm->flags & P_OR) {
+            // only execute if previous command was unsuccessful
+            if (error == 0) {
+                return (0);
+            }
         }
 
         // execute external command
         pid_t child_pid;
         if ((child_pid = fork()) == 0) {
             /* Child process code */    
-            dbg("r%d ==> $(%s) ==> w%d\n", inout[0], args[0], inout[1]);
+            command_setup_endpoints(cm);
 
-            // close ends of the pipe we don't use
-            for (int i = 0; i < 2; i++) if (toclose[i] != -1) {
-                dbg("closing %c%d\n", i == 0 ? 'r' : 'w', toclose[i]);
-                close(toclose[i]);
-                toclose[i] = -1;
-            }
-            
-            if (inout[0] != STDIN_FILENO) {
-                if (dup2(inout[0], 0) == -1) {
-                    dbg("error while doing stdin = %d, %s\n", inout[0], strerror(errno));
-                }
-                close(inout[0]);
-            }
-
-            if (inout[1] != STDOUT_FILENO) {
-                if (dup2(inout[1], 1) == -1) {
-                    dbg("error while doing stdout = %d, %s\n", inout[1], strerror(errno));
-                }
-                close(inout[1]);
-            }
-
-            // fprintf(stderr, "Launching '%s'\n", args[0]);
-            // dbg("%s", "exec\n");
             if (execvp(args[0], args) == -1) {
                 dbg("Launching %s failed with error: %s\n", args[0], strerror(errno));
             }
         } else if (child_pid > 0) {
             // queue fds to close later
-            if (inout[0] != STDIN_FILENO) {
-                pip_push(toclose_shell, inout[0]);
-            }
-
-            if (inout[1] != STDOUT_FILENO) {
-                pip_push(toclose_shell, inout[1]);
-            }
-            pip_close_all(toclose_shell);
+            command_close_endpoints(cm);
 
             /* Parent process code */
-            if (!(flags & P_BG)) {
-
+            if (!(cm->flags & P_BG)) {
                 dbg("waiting for [%d]\n", child_pid);
                
                 if(waitpid(child_pid, &error, 0) == -1) {
@@ -177,8 +130,6 @@ run_command(char **args)
         } else {
             dbg("%s", "Failed to fork! Cannot launch command.\n");
         }
-
-        flags = 0;
 
         return (1);
 }
@@ -213,26 +164,31 @@ parseword(char **pp)
 static void
 process(char *line)
 {
+        // character look-aheads
 	int ch, ch2;
+        int next_cm_flags = 0;
 	char *p, *word;
 	char *args[100], **narg;
-	int pip[2];
+
+        command_t *cm = NULL, *prev_cm = NULL;
 
 	p = line;
-        if (*p == '#') {
-            // comment line, don't execute
-            return;
-        }
-
-        pip[0] = 0;
-        pip[1] = 0;
 
 newcmd:
-	inout[0] = STDIN_FILENO;
-	inout[1] = STDOUT_FILENO;
-        toclose[0] = -1;
-        toclose[1] = -1;
-        flags = 0;
+        // destroy previous command if any
+        if (prev_cm) {
+            command_destroy(prev_cm);
+        }
+        prev_cm = cm;
+
+        cm = command_new();
+        // connect pipes if needed
+        if (prev_cm && prev_cm->output->type == EP_PIPE) {
+            cm->input->type = EP_PIPE;
+            cm->input->pipe = prev_cm->output->pipe;
+        }
+        cm->flags = next_cm_flags;
+        next_cm_flags = 0;
 
 newcmd2:
 	narg = args;
@@ -253,6 +209,8 @@ newcmd2:
 
 nextch:
 		switch (ch) {
+                case '#':
+                        return; // skip comments
 		case ' ':
 		case '\t': p++; ch = *p; goto nextch;
 		case '<': {
@@ -260,7 +218,8 @@ nextch:
                         char *path = parseword(&p);
                         *p = 0;
 
-                        inout[0] = open(path, O_RDONLY);
+                        cm->input->type = EP_FILE;
+                        cm->input->path = strdup(path);
 
                         p++; ch = *p;
                         goto nextch;
@@ -270,7 +229,8 @@ nextch:
                         char* path = parseword(&p);
                         *p = 0;
 
-                        inout[1] = open(path, O_CREAT | O_WRONLY, 0644);
+                        cm->output->type = EP_FILE;
+                        cm->output->path = strdup(path);
 
                         p++; ch = *p;
                         goto nextch;
@@ -279,37 +239,21 @@ nextch:
                         p++; 
                         ch2 = *p;
                         if (ch2 == '|') {
+                            // ||
                             p++;
-                            run_command(args);
-                            flags |= P_OR;
+
+                            run_command(cm, args);
+
+                            next_cm_flags |= P_OR;
                             goto newcmd;
                         } else {
-                            if (pip[FD_READ]) {
-                                // (pipe n-1) -> (process)
-                                inout[FD_READ] = pip[FD_READ];
-                                toclose[FD_WRITE] = pip[FD_WRITE];
-                            }
+                            // |
+                            cm->output->type = EP_PIPE;
+                            cm->output->pipe = pipe_new();
+                            cm->flags |= P_BG;
 
-                            if(pipe(pip) == -1) {
-                                dbg("%s", "Couldn't create a pipe");
-                                exit(1);
-                            }
-                            dbg("==> w%d | r%d ==>\n", pip[1], pip[0]);
-
-                            // (process) -> (pipe n)
-                            inout[FD_WRITE] = pip[FD_WRITE];
-                            toclose[FD_READ] = pip[FD_READ];
-                            flags |= P_BG;
-
-                            run_command(args);
-                            
-                            // reset fds, they'll be set accordingly
-                            toclose[FD_READ] = -1;
-                            toclose[FD_WRITE] = -1;
-                            inout[FD_READ] = STDIN_FILENO;
-                            inout[FD_WRITE] = STDOUT_FILENO;
-
-                            goto newcmd2;
+                            run_command(cm, args);
+                            goto newcmd;
                         }
                         break;
                 }
@@ -317,33 +261,29 @@ nextch:
                         p++;
                         ch2 = *p;
                         if (ch2 == '&') {
+                            // &&
                             p++;
-                            run_command(args);
-                            flags |= P_AND;
+                            run_command(cm, args);
+
+                            next_cm_flags |= P_AND;
                             goto newcmd;
                         } else {
-                            flags |= P_BG;
-                            run_command(args);
+                            // &
+                            cm->flags |= P_BG;
+                            run_command(cm, args);
+
                             goto newcmd;
                         }
                         break;
                 }
 		case ';':
                         p++;
-                        if (pip[1]) {
-                            inout[FD_READ] = pip[FD_READ];
-                            toclose[FD_WRITE] = pip[FD_WRITE];
-                        }
-                        run_command(args);
+                        run_command(cm, args);
                         goto newcmd;
 		case '\n':
 		case '\0':
-                        if (pip[1]) {
-                            inout[FD_READ] = pip[FD_READ];
-                            toclose[FD_WRITE] = pip[FD_WRITE];
-                        }
                         if (args[0]) {
-                            run_command(args);
+                            run_command(cm, args);
                         }
                         return;
 		default:
@@ -379,8 +319,6 @@ main(void)
 	char cwd[MAXPATHLEN+1];
 	char line[1000];
 	char *res;
-        
-        toclose_shell = pip_new();
        
         // ignore interruptions: the shell shall survive!
         signal(SIGINT, do_nothing);
