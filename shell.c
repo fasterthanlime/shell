@@ -172,7 +172,7 @@ run_command(char **args)
             // fprintf(stderr, "Launching '%s'\n", args[0]);
             // dbg("%s", "exec\n");
             if (execvp(args[0], args) == -1) {
-                dbg("Launching %s failed with error: %s", args[0], strerror(errno));
+                dbg("Launching %s failed with error: %s\n", args[0], strerror(errno));
             }
         } else if (child_pid > 0) {
             /* Parent process code */
