@@ -1,12 +1,25 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "pipstack.h"
+#include "debug.h"
 
 typedef struct {
     int count;
     int size;
     int* list;
 } pipe_stack;
+
+void pip_is_empty(pipe_stack* pipes) {
+    return pip_get_size(pipes) == 0;
+}
+
+void pip_close_all(pipe_stack* pipes) {
+    while (!pip_is_empty(pipes)) {
+        int fd = pip_pop(pipes);
+        dbg("closing %d", fd);
+        close(fd);
+    }
+}
 
 void pip_push(pipe_stack* pipes, int fd) {
     if(!pipes) {
