@@ -1,3 +1,9 @@
+//----------------------------------------------------
+// CS-323 Assignment 1
+//
+// Ismail Amrani, Amos Wenger, Sebastien Zurfluh
+//----------------------------------------------------
+
 #include <sys/wait.h>
 #include <sys/fcntl.h>
 #include <sys/types.h>
