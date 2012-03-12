@@ -330,7 +330,7 @@ main(void)
         signal(SIGINT, do_nothing);
 
         // elect the kernel to automatically reap zombie children
-        signal(SIGCHLD, (__sighandler_t) reap_zombie_jesus);
+        signal(SIGCHLD, reap_zombie_jesus);
 	
         for (;;) {
 		getcwd(cwd, sizeof(cwd));
